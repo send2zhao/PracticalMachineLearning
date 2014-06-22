@@ -1,0 +1,106 @@
+---
+title: "Predict Exercise Manner"
+author: "send2zhao"
+date:  "Saturday, June 21, 2014"
+output: html_document
+---
+
+The goal of this project is to predict the manner in which people did the exercise. The dataset is made up a number of measurements from participants during the weight lifting exercise as well as other variables derived from the direct measurement values. The single class variable is type of the fashion of the activity.
+
+## Data clean up
+
+The training data set contains total 160 variables (159 predictor and one class variable) and 19622 observations. Many of the variables contain missing data. To simplify the task, all the variables with missing data are removed. After remove all the variables with NAs, the number of the predictors dropped to 58. Furthermore, following variables are removed since they are just for data management purpose and not related to the classes we tried to predict.
+
+* The index of the data, `X`.
+* Name of the users, `user_name`.
+* Time stamps (`raw_timestamp_part_1`, `raw_timestamp_part_2`, `cvtd_timestamp`).
+
+In the end, the remaining 53 predictors are used in build the model and perform the classification. 
+
+
+## Train the model
+
+The data is split into exclusive sets. Sixty percent of the data form the training set(11776 samples), and rest samples to the independent test set(7864 samples).  To estimate the model accuracy and for tuning parameter purpose, repeated 10-fold cross-validation is adopted in which the repeat time is set to 3. Random forest model is chosen to build the classifier. During the training, the random forest training algorithm selects the best parameter setting (optimal `mtry`) and uses it with all the training data to build the final model.
+
+## Performance summary
+The estimated accuracy of the classifier reaches 99.7%, with the standard deviation of 0.113%. Use this model to evaluate all the training set, we obtained the accuracy rate of 100% accuracy. On the independent test set, the accuracy is 99.58%, which is within the 1.68 of the standard deviation of the estimated accuracy. No over-fitting is observed. Finally, we applied this model on the 20 test entries, and submitted the estimated results. All the predications are correct.
+
+## R script
+```{r}
+# Load the libraries
+# install.packages('caret')
+# install.packages('randomForest')
+
+library(caret)
+library(randomForest)
+
+## load the data from the file
+# load data
+trainRawData <- read.csv("data/pml-training.csv",na.strings=c("NA",""))
+
+## discard NAs
+NAs <- apply(trainRawData,2,function(x) {sum(is.na(x))})
+## valid data entry
+validData <- trainRawData[,which(NAs == 0)]
+
+## remove some predictors that related to the data collection and seem no 
+## related to the classes.
+removeIndex <- grep("timestamp|X|user_name|new_window", names(validData))
+validData <- validData[, -removeIndex]
+
+
+## make training set, and independent test set
+## split the data to training and test sets
+set.seed(890)
+trainIndex <- createDataPartition(y=validData$classe, p=0.6,list=FALSE)
+trainData  <- validData[trainIndex, ]
+testData   <- validData[-trainIndex,]
+print(nrow(testData))
+
+
+## create cross-validation training control
+## 10-fold, 3 repeats to speed up
+ctrl <- trainControl(method = "cv", number  = 10, repeats=3)
+## set the model
+method = 'rf'
+
+## training 
+print('Train rf model')
+set.seed(201406)
+fit.rf <- train(trainData$classe ~., method=method, data=trainData, trControl = ctrl)
+fit.rf
+
+## generate the confusion matrix
+print('Confusion matrix for training set')
+confusionMatrix(trainData$classe, predict(fit.rf, trainData))
+
+## evaluated on the independent test set
+print('Confusion matrix for independent test set')
+confusionMatrix(testData$classe, predict(fit.rf, newdata=testData))
+
+
+## apply to the 20 samples for submitting to the coursera 
+testRawData       <- read.csv("data/pml-testing.csv", na.strings=c("NA", ""))
+NAs <- apply(testRawData,2,function(x) {sum(is.na(x))})
+questionValidData <- testRawData[, which(NAs ==0)] # remove variables containing NAs
+questionData      <- questionValidData[, -removeIndex] # remove some meta variables
+questionData.pre  <- predict(fit.rf, questionData[,-54]) 
+
+questionData.pre
+
+# generate the txt files
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(questionData.pre)
+
+```
+
+
+## Reference
+
+* [Human Activity Recognition](http://groupware.les.inf.puc-rio.br/har)
